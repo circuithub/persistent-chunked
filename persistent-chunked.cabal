@@ -1,9 +1,9 @@
 name:              persistent-chunked
-version:           0.0.2
+version:           0.0.3
 synopsis:          Helpers for running chunked queries with persistent
 description:       This package provides support for streaming queries that
                    return chunked sources. This is often desirable when iterating
-                   over large datasets or doing batch updates on a big table. 
+                   over large datasets or doing batch updates on a big table.
                    If you are using the MySQL backend, also take a look at the
                    persistent-mysql-extra package which provides several MySQL-specific
                    batch queries.
@@ -38,3 +38,5 @@ library
                  , conduit                       >= 1.1.7
                  , conduit-combinators
                  , monad-control                 < 1
+                 , containers                    >= 0.5.5
+                 , split                         >= 0.2.2
