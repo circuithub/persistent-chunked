@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
 module Database.Persist.Chunk
   ( selectSourceC
   , selectKeysC
@@ -15,11 +15,13 @@ import Data.List.Split                                (chunksOf)
 import Database.Persist
 import qualified Database.Persist.Sql         as P
 import qualified Data.Conduit                 as C
-import qualified Data.Conduit.Combinators     as C
 import qualified Data.Conduit.List            as CL
 import qualified Data.Map.Strict              as Map
 import Data.Map.Strict                                (Map)
-import Control.Monad                                  (unless)
+import Control.Monad.Trans.Resource (MonadResource)
+import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Reader (MonadReader)
+import Control.Monad.IO.Class (MonadIO)
 
 -- | Similar to 'Data.Conduit.Combinators.length', but implemented as an
 --   accumulator instead of a fold
@@ -29,13 +31,11 @@ lengthAccumC = CL.mapAccum (\i l -> (l + 1, i)) 0
 -- | Entities are fetched in chunks using 'OffsetBy' and 'LimitTo'
 -- TODO: Could this be used lazily? e.g.
 -- >>> take 10 $ selectSourceC 5 True [] :: Entity Foo
-selectSourceC  :: ( PersistEntity val
-                  , PersistEntityBackend val ~ PersistMonadBackend m
-                  , PersistQuery m
-                  )
-              => Int                -- ^ Chunk size
-              -> [Filter val]
-              -> C.Source m (Entity val)
+selectSourceC
+  :: (HasPersistBackend env (PersistEntityBackend val),PersistQuery (PersistEntityBackend val),PersistEntity val,MonadResource m,MonadReader env m)
+  => Int -- ^ Chunk size
+  -> [Filter val]
+  -> C.ConduitM () (Entity val) m ()
 selectSourceC chunk filters = loop 0
   where
     loop off = do
@@ -43,13 +43,11 @@ selectSourceC chunk filters = loop 0
       unless (l < chunk) $ loop (off + chunk)
 
 -- | Keys are fetched in chunks using 'OffsetBy' and 'LimitTo'
-selectKeysC  :: ( PersistEntity val
-                , PersistEntityBackend val ~ PersistMonadBackend m
-                , PersistQuery m
-                )
-            => Int                -- ^ Chunk size
-            -> [Filter val]
-            -> C.Source m (Key val)
+selectKeysC
+  :: (MonadReader env m,MonadResource m,HasPersistBackend env (PersistEntityBackend val),PersistEntity val,PersistQuery (PersistEntityBackend val))
+  => Int -- ^ Chunk size
+  -> [Filter val]
+  -> C.ConduitM () (Key val) m ()
 selectKeysC chunk filters = loop 0
   where
     loop off = do
@@ -57,15 +55,9 @@ selectKeysC chunk filters = loop 0
       unless (l < chunk) $ loop (off + chunk)
 
 -- | Efficient query for fetching multiple entities by key, maintaining the original order and with Nothing to fill holes (where nothing was found)
-getInManyListC ::  ( Functor m
-                   , Monad m
-                   , P.PersistQuery m
-                   , PersistMonadBackend m ~ PersistEntityBackend e
-                   , PersistEntity e
-                   )
-              => Int                -- ^ Chunk size
-              -> [Key e]
-              -> m [Maybe e]
+getInManyListC
+  :: (MonadIO m,PersistEntity b,PersistQuery (PersistEntityBackend b),Functor m)
+  => Int -> [Key b] -> ReaderT (PersistEntityBackend b) m [Maybe b]
 getInManyListC chunk ks = map (fmap entityVal) . map listToMaybe <$> selectInManyListC' chunk (idField, entityKey) ks
   where
     proxy              = joinProxy ks
@@ -73,18 +65,12 @@ getInManyListC chunk ks = map (fmap entityVal) . map listToMaybe <$> selectInMan
     idField            = persistIdField `asProxyTypeOf` proxyEntityField
 
 -- | Helper for 'selectInManyListC' and 'getInManyListC'
-selectInManyListC' ::  ( Functor m
-                       , Monad m
-                       , P.PersistQuery m
-                       , PersistEntity e
-                       , PersistField ftype
-                       , PersistMonadBackend m ~ PersistEntityBackend e
-                       , Ord ftype
-                       )
-                 => Int               -- ^ Chunk size
-                 -> (EntityField e ftype, Entity e -> ftype)
-                 -> [ftype]
-                 -> m [[Entity e]]
+selectInManyListC'
+  :: (Ord k,MonadIO m,PersistEntity val,PersistField k,PersistQuery (PersistEntityBackend val),Functor m)
+  => Int
+  -> (EntityField val k,Entity val -> k)
+  -> [k]
+  -> ReaderT (PersistEntityBackend val) m [[Entity val]]
 selectInManyListC' chunk (field, accessor) vals =
   fmap concat $ forM (chunksOf chunk vals) $ \cvals -> do
     results <- P.selectList [field P.<-. cvals] []
@@ -103,18 +89,12 @@ selectInManyListC' chunk (field, accessor) vals =
 
 
 -- | Select in query which maintains the ordering of results
-selectInManyListC ::  ( Functor m
-                      , Monad m
-                      , P.PersistQuery m
-                      , PersistEntity e
-                      , PersistField ftype
-                      , PersistMonadBackend m ~ PersistEntityBackend e
-                      , Ord ftype
-                      )
-                 => Int               -- ^ Chunk size
-                 -> (EntityField e ftype, e -> ftype)
-                 -> [ftype]
-                 -> m [[Entity e]]
+selectInManyListC
+  :: (Ord k,PersistQuery (PersistEntityBackend b),PersistField k,PersistEntity b,MonadIO m,Functor m)
+  => Int -- ^ Chunk size
+  -> (EntityField b k,b -> k)
+  -> [k]
+  -> ReaderT (PersistEntityBackend b) m [[Entity b]]
 selectInManyListC chunk (field, accessor) = selectInManyListC' chunk (field, accessor . entityVal)
 
 joinProxy :: proxy (proxy' e) -> Proxy e
