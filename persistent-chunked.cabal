@@ -1,5 +1,5 @@
 name:              persistent-chunked
-version:           0.0.3
+version:           0.0.4
 synopsis:          Helpers for running chunked queries with persistent
 description:       This package provides support for streaming queries that
                    return chunked sources. This is often desirable when iterating
