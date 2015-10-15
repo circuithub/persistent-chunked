@@ -3,7 +3,7 @@
 }:
 mkDerivation {
   pname = "persistent-chunked";
-  version = "0.0.3";
+  version = "0.0.4";
   src = ./.;
   buildDepends = [
     base conduit conduit-combinators containers monad-control
