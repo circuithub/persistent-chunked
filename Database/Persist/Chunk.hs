@@ -32,10 +32,14 @@ lengthAccumC = CL.mapAccum (\i l -> (l + 1, i)) 0
 -- TODO: Could this be used lazily? e.g.
 -- >>> take 10 $ selectSourceC 5 True [] :: Entity Foo
 selectSourceC
-  :: (HasPersistBackend env (PersistEntityBackend val),PersistQuery (PersistEntityBackend val),PersistEntity val,MonadResource m,MonadReader env m)
-  => Int -- ^ Chunk size
-  -> [Filter val]
-  -> C.ConduitM () (Entity val) m ()
+  :: ( PersistEntityBackend record ~ BaseBackend (BaseBackend backend)
+     , HasPersistBackend backend
+     , MonadReader backend m
+     , PersistEntity record
+     , MonadResource m
+     , PersistQueryRead (BaseBackend backend)
+     )
+  => Int -> [Filter record] -> C.ConduitM () (Entity record) m ()
 selectSourceC chunk filters = loop 0
   where
     loop off = do
@@ -44,10 +48,14 @@ selectSourceC chunk filters = loop 0
 
 -- | Keys are fetched in chunks using 'OffsetBy' and 'LimitTo'
 selectKeysC
-  :: (MonadReader env m,MonadResource m,HasPersistBackend env (PersistEntityBackend val),PersistEntity val,PersistQuery (PersistEntityBackend val))
-  => Int -- ^ Chunk size
-  -> [Filter val]
-  -> C.ConduitM () (Key val) m ()
+  :: ( BaseBackend (BaseBackend backend) ~ PersistEntityBackend record
+     , HasPersistBackend backend
+     , MonadReader backend m
+     , PersistEntity record
+     , MonadResource m
+     , PersistQueryRead (BaseBackend backend)
+     )
+  => Int -> [Filter record] -> C.ConduitM () (Key record) m ()
 selectKeysC chunk filters = loop 0
   where
     loop off = do
@@ -56,8 +64,12 @@ selectKeysC chunk filters = loop 0
 
 -- | Efficient query for fetching multiple entities by key, maintaining the original order and with Nothing to fill holes (where nothing was found)
 getInManyListC
-  :: (MonadIO m,PersistEntity b,PersistQuery (PersistEntityBackend b),Functor m)
-  => Int -> [Key b] -> ReaderT (PersistEntityBackend b) m [Maybe b]
+  :: ( PersistEntityBackend b ~ BaseBackend backend
+     , MonadIO m
+     , PersistQueryRead backend
+     , PersistEntity b
+     )
+  => Int -> [Key b] -> ReaderT backend m [Maybe b]
 getInManyListC chunk ks = map (fmap entityVal) . map listToMaybe <$> selectInManyListC' chunk (idField, entityKey) ks
   where
     proxy              = joinProxy ks
@@ -66,11 +78,17 @@ getInManyListC chunk ks = map (fmap entityVal) . map listToMaybe <$> selectInMan
 
 -- | Helper for 'selectInManyListC' and 'getInManyListC'
 selectInManyListC'
-  :: (Ord k,MonadIO m,PersistEntity val,PersistField k,PersistQuery (PersistEntityBackend val),Functor m)
+  :: ( PersistEntityBackend record ~ BaseBackend backend
+     , PersistEntity record
+     , PersistQueryRead backend
+     , MonadIO m
+     , PersistField k
+     , Ord k
+     )
   => Int
-  -> (EntityField val k,Entity val -> k)
+  -> (EntityField record k, Entity record -> k)
   -> [k]
-  -> ReaderT (PersistEntityBackend val) m [[Entity val]]
+  -> ReaderT backend m [[Entity record]]
 selectInManyListC' chunk (field, accessor) vals =
   fmap concat $ forM (chunksOf chunk vals) $ \cvals -> do
     results <- P.selectList [field P.<-. cvals] []
@@ -90,11 +108,14 @@ selectInManyListC' chunk (field, accessor) vals =
 
 -- | Select in query which maintains the ordering of results
 selectInManyListC
-  :: (Ord k,PersistQuery (PersistEntityBackend b),PersistField k,PersistEntity b,MonadIO m,Functor m)
-  => Int -- ^ Chunk size
-  -> (EntityField b k,b -> k)
-  -> [k]
-  -> ReaderT (PersistEntityBackend b) m [[Entity b]]
+  :: ( PersistEntityBackend b ~ BaseBackend backend
+     , MonadIO m
+     , PersistQueryRead backend
+     , PersistEntity b
+     , Ord k
+     , PersistField k
+     )
+  => Int -> (EntityField b k, b -> k) -> [k] -> ReaderT backend m [[Entity b]]
 selectInManyListC chunk (field, accessor) = selectInManyListC' chunk (field, accessor . entityVal)
 
 joinProxy :: proxy (proxy' e) -> Proxy e
