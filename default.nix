@@ -4,7 +4,7 @@
 mkDerivation {
   pname = "persistent-chunked";
   version = "0.0.4";
-  src = ./.;
+  src = import ../../nix/cabal-sdist.nix ./.;
   buildDepends = [
     base conduit conduit-combinators containers monad-control
     persistent split
