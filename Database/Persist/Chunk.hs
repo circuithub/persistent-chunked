@@ -70,7 +70,7 @@ getInManyListC
      , PersistEntity b
      )
   => Int -> [Key b] -> ReaderT backend m [Maybe b]
-getInManyListC chunk ks = map (fmap entityVal) . map listToMaybe <$> selectInManyListC' chunk (idField, entityKey) ks
+getInManyListC chunk ks = map (fmap entityVal . listToMaybe) <$> selectInManyListC' chunk (idField, entityKey) ks
   where
     proxy              = joinProxy ks
     proxyEntityField   = ((\_ -> Proxy) :: Proxy e -> Proxy (EntityField e (Key e))) proxy
@@ -101,7 +101,7 @@ selectInManyListC' chunk (field, accessor) vals =
     mapFromListMulti ((xk,xa):xs) = Map.map reverse $ insertAll (Map.singleton xk [xa]) xs
       where
         f y (Just ys) = Just $ y : ys
-        f y Nothing   = Just $ [y]
+        f y Nothing   = Just [y]
         insertAll m []           = m
         insertAll m ((yk,ya):ys) = insertAll (Map.alter (f ya) yk m) ys
 
