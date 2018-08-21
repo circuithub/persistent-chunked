@@ -43,7 +43,7 @@ selectSourceC
 selectSourceC chunk filters = loop 0
   where
     loop off = do
-      l <- selectSource filters [OffsetBy off, LimitTo chunk] C.$= lengthAccumC
+      l <- selectSource filters [OffsetBy off, LimitTo chunk] C..| lengthAccumC
       unless (l < chunk) $ loop (off + chunk)
 
 -- | Keys are fetched in chunks using 'OffsetBy' and 'LimitTo'
@@ -59,7 +59,7 @@ selectKeysC
 selectKeysC chunk filters = loop 0
   where
     loop off = do
-      l <- selectKeys filters [OffsetBy off, LimitTo chunk, Asc persistIdField] C.$= lengthAccumC
+      l <- selectKeys filters [OffsetBy off, LimitTo chunk, Asc persistIdField] C..| lengthAccumC
       unless (l < chunk) $ loop (off + chunk)
 
 -- | Efficient query for fetching multiple entities by key, maintaining the original order and with Nothing to fill holes (where nothing was found)
